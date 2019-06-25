@@ -10,6 +10,6 @@ int main(int argc, char* argv[])
 	simp->runSimp();
 	simp->write(argv[2]);
 	clock_t finish = clock();
-	printf("Model %s, Elapsed Time %fs\n", argv[1], (double)(double(finish - start) / CLOCKS_PER_SEC));
+	printf("Model %s, Elapsed Time %fs\n", argv[1], double(finish - start) / CLOCKS_PER_SEC);
 	return 0;
 }

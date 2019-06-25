@@ -121,12 +121,27 @@ public:
 			int newid = vtlist->size();
 			int v1n, v2n;
 			std::tie(v1n, v2n) = se.edge;
-			//printf("merge %d and %d to %d\n", v1n, v2n, newid);
 			replaceVertex(v1n, v2n, newid);
+			//printf("merge %d %s and %d %s to %d %s\n", 
+				//v1n, vtlist->vlist[v1n].crd.print().c_str(), v2n, vtlist->vlist[v2n].crd.print().c_str(), newid, vtlist->vlist[newid].crd.print().c_str());
 			vtlist->delVertex(v1n);
 			vtlist->delVertex(v2n);
 			step++;
-			if(step % 100 == 0) printf("\rSimplifying: Faces %d, Vertexes %d, HeapSize %d", facecount, vtlist->vertexcount, edgeheap->size());
+			if (step % 100 == 0)
+			{
+				printf("\rSimplifying: Faces %d, Vertexes %d, HeapSize %d       ",
+					facecount, vtlist->vertexcount, edgeheap->size());
+				/*auto realvertex = 0;
+				std::set<Triface> rtf;
+				for (auto it = vtlist->vlist.begin() + 1; it != vtlist->vlist.end(); ++it)
+				{
+					if (it->lazydel) continue;
+					rtf.insert(it->relfaces.begin(), it->relfaces.end());
+					realvertex += 1;
+				}
+				//printf(", Realfaces %d, RealVertexes %d\n", rtf.size(), realvertex);
+				assert(rtf.size() == facecount);*/
+			}
 		}
 		printf("\n");
 	}

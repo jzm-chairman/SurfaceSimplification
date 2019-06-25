@@ -3,12 +3,15 @@
 #include "Vec3.hpp"
 #include "Linear4.hpp"
 
+#define DISTPUN 0.01
+enum borderType {UNDETERMINE, BORDER, INNER};
+
 class Triface
 {
 public:
 	int pid[3];
 	Triface(int id1, int id2, int id3) { pid[0] = id1, pid[1] = id2, pid[2] = id3; }
-	Triface(std::tuple<int, int, int> pt) { int id1, id2, id3; std::tie(id1, id2, id3) = pt; pid[0] = id1, pid[1] = id2, pid[2] = id3; }
+	Triface(std::tuple<int, int, int> pt = std::tuple<int, int, int>()) { int id1, id2, id3; std::tie(id1, id2, id3) = pt; pid[0] = id1, pid[1] = id2, pid[2] = id3; }
 	Triface(const Triface& t) { for (int i = 0; i < 3; i++) pid[i] = t.pid[i]; }
 	~Triface() {}
 	auto toTuple() { return std::make_tuple(pid[0], pid[1], pid[2]); }
@@ -31,6 +34,8 @@ public:
 			}
 		return false;
 	}
+	bool operator<(const Triface& t) const { return pid[0] == t.pid[0] ? (pid[1] == t.pid[1] ? pid[2] < t.pid[2] : pid[1] < t.pid[1]) : pid[0] < t.pid[0]; }
+	bool operator==(const Triface& t) const { return pid[0] == t.pid[0] && pid[1] == t.pid[1] && pid[2] == t.pid[2]; }
 	void print() { printf("face(%d, %d, %d)\n", pid[0], pid[1], pid[2]); }
 };
 
@@ -41,9 +46,10 @@ public:
 	Vec3 crd; //顶点坐标
 	//std::set<int> nbr; //邻接表
 	std::vector<Triface> relfaces;
+	borderType btype; //记录是否是边界
 	bool lazydel;
 
-	Vertex(int _id, Vec3 _crd = Vec3()) : id(_id), crd(_crd), lazydel(false) {}
+	Vertex(int _id, Vec3 _crd = Vec3()) : id(_id), crd(_crd), lazydel(false), btype(UNDETERMINE) {}
 	Vertex(const Vertex& ov) : id(ov.id), crd(ov.crd), relfaces(ov.relfaces), lazydel(ov.lazydel) {}
 	void del() { lazydel = true; }
 	void addFace(std::tuple<int, int, int> face) { relfaces.push_back(Triface(face)); }
@@ -107,7 +113,8 @@ public:
 			faces.push_back(it->toTuple());
 		return faces;
 	}
-	Matrix4 quadErrMat(int u) //指定下标求基本误差矩阵
+	Matrix4 quadErrMat(int u) 
+	//指定下标求基本误差矩阵并返回对应面片以备其他操作
 	{
 		Matrix4 err;
 		auto faces = getTrifaces(u);
@@ -119,27 +126,57 @@ public:
 			Vec3& v2c = vlist[u2].crd;
 			Vec3& v3c = vlist[u3].crd;
 			//叉积法求解平面法方向(a, b, c)
-			Vec3 normdir = (v2c - v1c).cross(v3c - v1c); normdir.norm();
+			Vec3 normdir = (v2c - v1c).cross(v3c - v1c); 
+			if(normdir.isNormal()) normdir.norm();
 			double d = -v1c.dot(normdir); //平面的参数d
 			Vec4 plane(normdir, d);
 			for (int i = 0; i < 4; i++)
 				for (int j = 0; j < 4; j++)
 					err[i][j] += plane[i] * plane[j]; //K=p*p'
+			/*if (!err.isNormal())
+			{
+				printf("id(%d): %s\n", u1, v1c.print().c_str());
+				printf("id(%d): %s\n", u2, v2c.print().c_str());
+				printf("id(%d): %s\n", u3, v3c.print().c_str());
+				printf("Plane:"); plane.print();
+				err.print();
+			}
+			assert(err.isNormal());*/
 		}
 		return err;
 	}
+	int checkIntersec(int u, int v)
+	{
+		auto faces1 = vlist[u].relfaces;
+		auto faces2 = vlist[v].relfaces;
+		std::vector<Triface> itsc(10);
+		std::sort(faces1.begin(), faces1.end());
+		std::sort(faces2.begin(), faces2.end());
+		auto it = std::set_intersection(faces1.begin(), faces1.end(), faces2.begin(), faces2.end(), itsc.begin());
+		return it - itsc.begin();
+	}
 	std::tuple<Vec3, double> getMinErrPoint(std::pair<int, int> vp) //指定一对点求解合适的新顶点位置和对应误差
 	{
-		int u, v;
-		std::tie(u, v) = vp;
-		Matrix4 errmat = quadErrMat(u) + quadErrMat(v);
+		int u, v; std::tie(u, v) = vp;
+		//assert(vlist[u].btype != UNDETERMINE && vlist[v].btype != UNDETERMINE);
+		//if (vlist[u].btype == BORDER || vlist[v].btype == BORDER) return std::make_tuple(Vec3(), INF);
+		if (checkIntersec(u, v) < 2) return std::make_tuple(Vec3(), INF);
+		Vec3 uc = vlist[u].crd; Vec3 vc = vlist[v].crd;
+		double distpun = sqrt((vlist[u].crd - vlist[v].crd).sqrlen()) * DISTPUN;
+		Matrix4 errmatu, errmatv;
+		errmatu = quadErrMat(u);
+		errmatv = quadErrMat(v);
+		Matrix4 errmat = errmatu + errmatv;
 		Matrix4 A = errmat;
 		A[3][0] = A[3][1] = A[3][2] = 0, A[3][3] = 1; //误差矩阵转换为系数矩阵
-		Vec4 solu = solve4(A, Vec3()); //注意这几步有隐式转换
+		Vec4 solu = solve4(A, Vec4(Vec3())); //注意这几步有隐式转换
+		double suvdist = sqrt((Vec3(solu) - uc).sqrlen()) + sqrt((Vec3(solu) - vc).sqrlen());
+		double uvdist = sqrt((uc - vc).sqrlen()); //s到uv距离和不能超过uv距离太多防止出现不合理解
+		double errval = quadFormValue(errmat, solu);
 		//if (solu.norminf() > eps)
-			//printf("(%d, %d) valid, error = (%f, %f), minerror = %f\n", vp.first, vp.second, quadFormValue(errmat, vlist[u].crd), quadFormValue(errmat, vlist[v].crd), quadFormValue(errmat, solu));
-		if (solu.norminf() > eps) //解有效，选取即可
-			return std::make_tuple(solu, quadFormValue(errmat, solu));
+			//printf("(%d, %d) valid, error = (%f, %f), minerror = %f\n", vp.first, vp.second, quadFormValue(errmat, vlist[u].crd), quadFormValue(errmat, vlist[v].crd), errval);
+		if (solu.norminf() > eps && suvdist < 2 * uvdist) //解有效，选取即可
+			return std::make_tuple(solu, errval + distpun);
 		//系数矩阵不可逆的时候用简单策略
 		//errmat.print();
 		//printf("%d ", u); Vec4(vlist[u].crd).print();
@@ -149,9 +186,9 @@ public:
 		Vec3 mid = (vlist[u].crd + vlist[v].crd) / 2;
 		double errmid = quadFormValue(errmat, mid);
 		//printf("(%d, %d) invalid, error = (%f, %f, %f)\n", vp.first, vp.second, erru, errv, errmid);
-		if (erru < errv && erru < errmid) return std::make_tuple(vlist[u].crd, erru);
-		else if (errv < errmid) return std::make_tuple(vlist[v].crd, errv);
-		else return std::make_tuple(mid, errmid);
+		if (errmid < erru && errmid < errv) return std::make_tuple(mid, errmid + distpun);
+		else if (erru < errv) return std::make_tuple(vlist[u].crd, erru + distpun);
+		else return std::make_tuple(vlist[v].crd, errv + distpun);
 	}
 };
 int VertexList::vertexcount = 0;

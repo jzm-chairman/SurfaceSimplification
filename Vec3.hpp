@@ -22,4 +22,5 @@ public:
 	double norminf() const { return std::max(std::max(abs(x), abs(y)), abs(z)); }
 	bool isNormal() const { return std::isnormal(x) && std::isnormal(y) && std::isnormal(z); }
 	std::tuple<double, double, double> unpack() { return std::make_tuple(x, y, z); }
+	std::string print() { char msg[20]; sprintf(msg, "(%.3f, %.3f, %.3f)", x, y, z); return std::string(msg); }
 };

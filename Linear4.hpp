@@ -57,6 +57,13 @@ public:
 				tmp[i][j] = mat[i][j] + o.mat[i][j];
 		return Matrix4(tmp);
 	}
+	bool isNormal()
+	{
+		for (int i = 0; i < 4; i++)
+			for (int j = 0; j < 4; j++)
+				if (std::isnan(mat[i][j])) return false;
+		return true;
+	}
 	void print()
 	{
 		printf("Matrix:\n");
